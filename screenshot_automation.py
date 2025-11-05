@@ -9,6 +9,7 @@ import pytesseract
 import time
 import os
 import re
+import csv
 
 # Import config
 try:
@@ -324,8 +325,8 @@ class APClassroomOCR:
                     print(f"   Stopping...")
                     break
     
-    def save_results(self, output_file):
-        """Save results in clean format"""
+    def save_results_txt(self, output_file):
+        """Save results in clean text format"""
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write("=" * 80 + "\n")
             f.write("AP CLASSROOM - QUESTIONS & ANSWERS\n")
@@ -337,7 +338,50 @@ class APClassroomOCR:
                 f.write(result['text'])
                 f.write("\n")
         
-        print(f"\n💾 Saved: {output_file}")
+        print(f"\n💾 Saved TXT: {output_file}")
+    
+    def save_results_csv(self, output_file):
+        """Save results in CSV format for Blooket import"""
+        with open(output_file, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            
+            # Write header row (Blooket format: Question,Answer1,Answer2,Answer3,Answer4,CorrectAnswer)
+            writer.writerow(['Question', 'Answer1', 'Answer2', 'Answer3', 'Answer4', 'CorrectAnswer'])
+            
+            for result in self.ocr_results:
+                if result['text'].startswith('[Question'):
+                    continue  # Skip failed extractions
+                
+                # Parse the question and answers from the text
+                lines = result['text'].strip().split('\n')
+                if len(lines) < 3:
+                    continue
+                
+                question = lines[0].strip()
+                answers = []
+                
+                # Extract answers (A, B, C, D, E)
+                for line in lines[1:]:
+                    line = line.strip()
+                    if line.startswith(('A.', 'B.', 'C.', 'D.', 'E.')):
+                        answer_text = line[2:].strip()  # Remove "A. ", "B. ", etc.
+                        answers.append(answer_text)
+                
+                # Ensure we have at least 4 answers (Blooket expects 4)
+                while len(answers) < 4:
+                    answers.append("")  # Add empty answers if needed
+                
+                # For now, set first answer as correct (you can modify this later)
+                # In Blooket, the CorrectAnswer column should contain the correct answer text
+                correct_answer = answers[0] if answers else ""
+                
+                # Write to CSV (Question, 4 answers, correct answer)
+                writer.writerow([question, answers[0], answers[1], answers[2], answers[3], correct_answer])
+        
+        print(f"\n💾 Saved CSV: {output_file}")
+        print("📋 CSV Format: Ready for Blooket import!")
+        print("   Columns: Question, Answer1, Answer2, Answer3, Answer4, CorrectAnswer")
+        print("   Note: Currently sets first answer as correct. Edit CSV if needed.")
     
     def cleanup(self):
         """Close browser"""
@@ -346,7 +390,7 @@ class APClassroomOCR:
 
 def main():
     print("=" * 80)
-    print("AP CLASSROOM EXTRACTOR - FIXED VERSION")
+    print("AP CLASSROOM EXTRACTOR - WITH BLOOKET CSV EXPORT")
     print("=" * 80)
     
     ocr = APClassroomOCR(tesseract_path=TESSERACT_PATH)
@@ -372,8 +416,38 @@ def main():
         # Run automation
         ocr.run_automation(MAX_CLICKS, WAIT_TIME, OUTPUT_FOLDER)
         
-        # Save results
-        ocr.save_results(OCR_RESULTS_FILE)
+        # Ask user for output format
+        print("\n" + "=" * 80)
+        print("📁 OUTPUT FORMAT SELECTION")
+        print("=" * 80)
+        print("Choose output format:")
+        print("  1. TXT file (readable format)")
+        print("  2. CSV file (for Blooket import)")
+        print("  3. BOTH files")
+        
+        choice = input("\nEnter choice (1, 2, or 3): ").strip()
+        
+        # Generate base filename without extension
+        base_output_path = os.path.splitext(OCR_RESULTS_FILE)[0]
+        
+        if choice == '1':
+            # Save as TXT only
+            txt_file = f"{base_output_path}.txt"
+            ocr.save_results_txt(txt_file)
+        elif choice == '2':
+            # Save as CSV only
+            csv_file = f"{base_output_path}.csv"
+            ocr.save_results_csv(csv_file)
+        elif choice == '3':
+            # Save both formats
+            txt_file = f"{base_output_path}.txt"
+            csv_file = f"{base_output_path}.csv"
+            ocr.save_results_txt(txt_file)
+            ocr.save_results_csv(csv_file)
+        else:
+            print("❌ Invalid choice. Saving as TXT by default.")
+            txt_file = f"{base_output_path}.txt"
+            ocr.save_results_txt(txt_file)
         
         # Summary
         successful = len([r for r in ocr.ocr_results if not r['text'].startswith('[Question')])
@@ -382,10 +456,21 @@ def main():
         print("\n" + "=" * 80)
         print("✅ DONE!")
         print("=" * 80)
-        print(f"📄 File: {OCR_RESULTS_FILE}")
         print(f"✓ Success: {successful}/{len(ocr.ocr_results)}")
         if failed > 0:
             print(f"⚠ Failed: {failed}")
+        
+        if choice in ['1', '3']:
+            print(f"📄 TXT File: {base_output_path}.txt")
+        if choice in ['2', '3']:
+            print(f"📊 CSV File: {base_output_path}.csv")
+            print("\n🎮 BLOOKET IMPORT INSTRUCTIONS:")
+            print("   1. Go to Blooket.com")
+            print("   2. Create a new set")
+            print("   3. Click 'Import from CSV'")
+            print("   4. Upload the CSV file")
+            print("   5. Review and edit correct answers if needed")
+        
         print("=" * 80)
         
     except KeyboardInterrupt:
