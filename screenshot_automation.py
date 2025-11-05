@@ -340,13 +340,37 @@ class APClassroomOCR:
         
         print(f"\n💾 Saved TXT: {output_file}")
     
+    def clean_text(self, text):
+        """Clean text by removing/replacing problematic characters"""
+        # Replace common problematic Unicode characters
+        replacements = {
+            'â€™': "'",   # Curly apostrophe
+            'â€œ': '"',   # Left double quote
+            'â€': '"',    # Right double quote
+            'â€˜': "'",   # Left single quote
+            'â€¦': '...', # Ellipsis
+            'â€”': '—',   # Em dash
+            'â€“': '–',   # En dash
+            'â€¢': '•',   # Bullet
+            'â€¡': '‡',   # Double dagger
+            'â€°': '‰',   # Per mille
+            'â€¹': '‹',   # Single left-pointing angle quotation
+            'â€º': '›',   # Single right-pointing angle quotation
+        }
+        
+        cleaned_text = text
+        for bad_char, good_char in replacements.items():
+            cleaned_text = cleaned_text.replace(bad_char, good_char)
+        
+        return cleaned_text
+    
     def save_results_csv(self, output_file):
-        """Save results in CSV format for Blooket import"""
-        with open(output_file, 'w', newline='', encoding='utf-8') as f:
+        """Save results in CSV format for Blooket import with ALL 5 answers"""
+        with open(output_file, 'w', newline='', encoding='utf-8-sig') as f:  # utf-8-sig for Excel compatibility
             writer = csv.writer(f)
             
-            # Write header row (Blooket format: Question,Answer1,Answer2,Answer3,Answer4,CorrectAnswer)
-            writer.writerow(['Question', 'Answer1', 'Answer2', 'Answer3', 'Answer4', 'CorrectAnswer'])
+            # Write header row with ALL 5 answers + CorrectAnswer column
+            writer.writerow(['Question', 'Answer1', 'Answer2', 'Answer3', 'Answer4', 'Answer5', 'CorrectAnswer'])
             
             for result in self.ocr_results:
                 if result['text'].startswith('[Question'):
@@ -357,7 +381,7 @@ class APClassroomOCR:
                 if len(lines) < 3:
                     continue
                 
-                question = lines[0].strip()
+                question = self.clean_text(lines[0].strip())
                 answers = []
                 
                 # Extract answers (A, B, C, D, E)
@@ -365,23 +389,27 @@ class APClassroomOCR:
                     line = line.strip()
                     if line.startswith(('A.', 'B.', 'C.', 'D.', 'E.')):
                         answer_text = line[2:].strip()  # Remove "A. ", "B. ", etc.
+                        answer_text = self.clean_text(answer_text)  # Clean the answer text
                         answers.append(answer_text)
                 
-                # Ensure we have at least 4 answers (Blooket expects 4)
-                while len(answers) < 4:
+                # Ensure we have exactly 5 answer columns (fill empty if needed)
+                while len(answers) < 5:
                     answers.append("")  # Add empty answers if needed
                 
-                # For now, set first answer as correct (you can modify this later)
-                # In Blooket, the CorrectAnswer column should contain the correct answer text
-                correct_answer = answers[0] if answers else ""
+                # Keep only first 5 answers if there are more
+                answers = answers[:5]
                 
-                # Write to CSV (Question, 4 answers, correct answer)
-                writer.writerow([question, answers[0], answers[1], answers[2], answers[3], correct_answer])
+                # Leave CorrectAnswer column EMPTY for user to fill in
+                correct_answer = ""
+                
+                # Write to CSV (Question, 5 answers, empty correct answer)
+                writer.writerow([question, answers[0], answers[1], answers[2], answers[3], answers[4], correct_answer])
         
         print(f"\n💾 Saved CSV: {output_file}")
         print("📋 CSV Format: Ready for Blooket import!")
-        print("   Columns: Question, Answer1, Answer2, Answer3, Answer4, CorrectAnswer")
-        print("   Note: Currently sets first answer as correct. Edit CSV if needed.")
+        print("   Columns: Question, Answer1, Answer2, Answer3, Answer4, Answer5, CorrectAnswer")
+        print("   Note: CorrectAnswer column is left EMPTY for you to fill in")
+        print("   Blooket will use Answer1-Answer4, but all 5 are preserved for your reference")
     
     def cleanup(self):
         """Close browser"""
@@ -469,7 +497,8 @@ def main():
             print("   2. Create a new set")
             print("   3. Click 'Import from CSV'")
             print("   4. Upload the CSV file")
-            print("   5. Review and edit correct answers if needed")
+            print("   5. Review questions and fill in CorrectAnswer column")
+            print("   6. Blooket will use Answer1-Answer4, but all 5 answers are preserved")
         
         print("=" * 80)
         
